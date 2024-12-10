@@ -98,18 +98,21 @@ class Race:
         self.runner_info['age'] = self.get_horse_ages()
         self.runner_info['horse'] = self.get_names_horse()
         self.runner_info['horse_id'] = self.get_ids_horse()
+        self.runner_info['horse_url'] = self.get_urls_horse()
         self.runner_info['jockey'] = self.get_names_jockey()
         self.runner_info['jockey_id'] = self.get_ids_jockey()
+        self.runner_info['jockey_url'] = self.get_urls_jockey() 
         self.runner_info['trainer'] = self.get_names_trainer()
         self.runner_info['trainer_id'] = self.get_ids_trainer()
+        self.runner_info['trainer_url'] = self.get_urls_trainer() 
         self.runner_info['owner'] = self.get_names_owner()
         self.runner_info['owner_id'] = self.get_ids_owner()
+        self.runner_info['owner_url'] = self.get_urls_owner()
         self.runner_info['hg'] = self.get_headgear()
-
         self.runner_info['wgt'], self.runner_info['lbs'] = self.get_weights()
-        self.runner_info['or'] = xpath(self.doc, 'td', 'OR', 'data-ending', fn='/text()')
-        self.runner_info['rpr'] = xpath(self.doc, 'td', 'RPR', 'data-ending', fn='/text()')
-        self.runner_info['ts'] = xpath(self.doc, 'td', 'TS', 'data-ending', fn='/text()')
+        self.runner_info['or'] = self.get_ratings('OR')
+        self.runner_info['rpr'] = self.get_ratings('RPR')
+        self.runner_info['ts'] = self.get_ratings('TS')
         self.runner_info['silk_url'] = xpath(self.doc, 'img', 'rp-horseTable__silk', 'class', fn='/@src')
 
         self.runner_info['time'] = self.get_finishing_times()
@@ -453,9 +456,32 @@ class Race:
         jockey_ids = xpath(self.doc, 'a', 'link-jockeyName', fn='/@href')
         return [jockey_id.split('/')[3] for jockey_id in jockey_ids[::2]]
 
+    def get_urls_jockey(self):
+        """获取完整的jockey url列表"""
+        jockey_urls = xpath(self.doc, 'a', 'link-jockeyName', fn='/@href')
+        # 由于每个骑手信息重复了3次,所以需要[::2]
+        return [f"https://www.racingpost.com{url}" for url in jockey_urls[::2]]
+
     def get_ids_owner(self):
         owner_ids = self.doc.xpath("//a[@data-test-selector='link-silk']/@href")
         return [owner_id.split('/')[3] for owner_id in owner_ids]
+    
+    def get_urls_horse(self):
+        """获取完整的horse url列表"""
+        horse_urls = xpath(self.doc, 'a', 'link-horseName', fn='/@href')
+        return [f"https://www.racingpost.com{url}" for url in horse_urls]
+
+    def get_urls_trainer(self):
+        """获取完整的trainer url列表"""
+        trainer_urls = xpath(self.doc, 'a', 'link-trainerName', fn='/@href')
+        # 由于每个教练信息重复了2次,所以需要[::2]
+        return [f"https://www.racingpost.com{url}" for url in trainer_urls[::2]]
+
+    def get_urls_owner(self):
+        """获取完整的owner url列表"""
+        owner_urls = self.doc.xpath("//a[@data-test-selector='link-silk']/@href")
+        return [f"https://www.racingpost.com{url}" for url in owner_urls]
+
 
     def get_ids_trainer(self):
         trainer_ids = xpath(self.doc, 'a', 'link-trainerName', fn='/@href')
@@ -645,16 +671,19 @@ class Race:
     def get_sexs(self, info):
         sexs = []
         for x in info:
-            info_sex = x.text.strip().split()
-            if len(info_sex) == 2:
-                sexs.append(info_sex[1].upper())
-            elif len(info_sex) == 1:
-                sexs.append(info_sex[0].upper())
-            else:
-                print('Sex error: ', info_sex)
-                print(self.url)
-                sys.exit()
-
+            try:
+                info_sex = x.text.strip().split()
+                if len(info_sex) == 2:
+                    sexs.append(info_sex[1].upper())  # 例如: "bay COLT" -> "COLT"
+                elif len(info_sex) == 1:
+                    sexs.append(info_sex[0].upper())  # 例如: "FILLY" -> "FILLY"
+                else:
+                    print(f'Sex info missing: {self.url}')
+                    sexs.append('')  # 添加空值而不是退出
+            except (AttributeError, IndexError):
+                print(f'Sex info error: {self.url}')
+                sexs.append('')  # 处理任何可能的错误，返回空值
+        
         return sexs
 
     def get_starting_prices(self):
@@ -766,3 +795,33 @@ class Race:
                     sys.exit()
 
         return seconds
+
+    def get_ratings(self, rating_type):
+        """获取评���数据,确保与马匹位置一一对应
+        Args:
+            rating_type: 评分类型('OR', 'RPR', 'TS')
+        Returns:
+            处理后的评分列表,与马匹位置严格对应
+        """
+        # 获取原始评分数据
+        ratings = xpath(self.doc, 'td', rating_type, 'data-ending', fn='/text()')
+        
+        # 获取参赛马匹数量
+        num_runners = len(self.runner_info['num'])
+        
+        # 创建与马匹数量相同的评分列表,全部填充空字符串
+        processed_ratings = ['' for _ in range(num_runners)]
+        
+        # 遍历每个评分位置
+        for i in range(num_runners):
+            if i < len(ratings):
+                rating = ratings[i].strip()
+                try:
+                    # 尝试转换为整数
+                    rating_value = int(rating)
+                    processed_ratings[i] = str(rating_value)
+                except (ValueError, TypeError):
+                    # 保持空字符串
+                    continue
+        
+        return processed_ratings
