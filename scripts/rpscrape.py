@@ -100,30 +100,62 @@ def scrape_races(races, folder_name, file_name, file_extension, code, file_write
         os.makedirs(out_dir)
 
     file_path = f'{out_dir}/{file_name}.{file_extension}'
+    error_path = f'{out_dir}/errors_{file_name}.csv'
 
-    with file_writer(file_path) as csv:
+    with file_writer(file_path) as csv, open(error_path, 'w') as error_file:
         csv.write(settings.csv_header + '\n')
+        error_file.write('url\n')
 
         for url in races:
-            r = requests.get(url, headers=random_header.header())
-            doc = html.fromstring(r.content)
-
             try:
-                race = Race(url, doc, code, settings.fields)
-            except VoidRaceError:
+                r = requests.get(url, headers=random_header.header())
+                
+                if r.status_code != 200:
+                    print(f"HTTP Error {r.status_code}: {url}")
+                    error_file.write(f'{url}\n')
+                    continue
+                
+                if '/error/' in r.url or 'error' in r.url.lower():
+                    print(f"Redirected to error page: {url}")
+                    error_file.write(f'{url}\n')
+                    continue
+                
+                doc = html.fromstring(r.content)
+                
+                error_indicators = [
+                    "Not Found"
+                ]
+                page_text = doc.text_content().lower()
+                if any(indicator.lower() in page_text for indicator in error_indicators):
+                    print(f"Page contains error information: {url}")
+                    error_file.write(f'{url}\n')
+                    continue
+
+                try:
+                    race = Race(url, doc, code, settings.fields)
+                except VoidRaceError:
+                    continue
+                except Exception as e:
+                    print(f"Error processing race: {url}\nError: {str(e)}\n")
+                    error_file.write(f'{url}\n')
+                    continue
+
+                if code == 'flat':
+                    if race.race_info['type'] != 'Flat':
+                        continue
+                elif code == 'jumps':
+                    if race.race_info['type'] not in {'Chase', 'Hurdle', 'NH Flat'}:
+                        continue
+
+                for row in race.csv_data:
+                    csv.write(row + '\n')
+
+            except Exception as e:
+                print(f"Error accessing URL: {url}\nError: {str(e)}\n")
+                error_file.write(f'{url}\n')
                 continue
 
-            if code == 'flat':
-                if race.race_info['type'] != 'Flat':
-                    continue
-            elif code == 'jumps':
-                if race.race_info['type'] not in {'Chase', 'Hurdle', 'NH Flat'}:
-                    continue
-
-            for row in race.csv_data:
-                csv.write(row + '\n')
-
-        print(f'Finished scraping.\n{file_name}.{file_extension} saved in rpscrape/{out_dir.lstrip("../")}')
+        print(f'Scraping completed.\n{file_name}.{file_extension} saved in rpscrape/{out_dir.lstrip("../")}')
 
 
 def writer_csv(file_path):
