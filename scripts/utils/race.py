@@ -783,21 +783,21 @@ class Race:
         seconds = []
 
         for time in times:
-            if time == '-':
+            if time == '-' or time == '':
                 seconds.append('-')
             else:
                 try:
                     mins, secs = time.split(':')
                     _secs = (int(mins) * 60) + float(secs)
                     seconds.append(f'{_secs:.2f}')
-                except ValueError:
-                    print('TimeToSeconds Error: ', self.url)
-                    sys.exit()
+                except (ValueError, AttributeError) as e:
+                    print(f'Time conversion error for {time} in race: {self.url}')
+                    seconds.append('-')  # 使用'-'表示无效时间
 
         return seconds
 
     def get_ratings(self, rating_type):
-        """获取评���数据,确保与马匹位置一一对应
+        """获取评分数据,确保与马匹位置一一对应
         Args:
             rating_type: 评分类型('OR', 'RPR', 'TS')
         Returns:
