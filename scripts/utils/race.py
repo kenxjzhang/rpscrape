@@ -28,7 +28,6 @@ class Race:
         url_split = self.url.split('/')
 
         self.race_info['course'] = self.get_course(url_split[5])
-
         if self.race_info['course'] == 'Belmont At The Big A':
             self.race_info['course_id'] = '255'
             self.race_info['course'] = 'Aqueduct'
